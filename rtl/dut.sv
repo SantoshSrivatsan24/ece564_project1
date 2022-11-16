@@ -1,3 +1,13 @@
+`define CLOG2(x) \
+	(x <= 8'd2) ? 8'd1 : \
+	(x <= 8'd4) ? 8'd2 : \
+	(x <= 8'd8) ? 8'd3 : \
+	(x <= 8'd16) ? 8'd4 : \
+	(x <= 8'd32) ? 8'd5 : \
+	(x <= 8'd64) ? 8'd6 : \
+	(x <= 8'd128) ? 8'd7 : \
+	-1
+
 module MyDesign (
 //---------------------------------------------------------------------------
 //Control signals
@@ -108,6 +118,7 @@ module MyDesign (
 
 	reg  [DATAW-1:0] input_matrix_size;
 	wire [7:0]	     N;
+	wire [7:0]		 logN;
 
 	reg  [7:0] row;
 	reg  [7:0] col;
@@ -174,7 +185,8 @@ module MyDesign (
 	assign input_col_done    = (next_col > (N - 2));
 	assign input_matrix_done = (next_row > (N - 2));
 
-	assign input_set_addr 	= ((row << $clog2(N)) + col) >> 1; // (N x r + c) / 2
+	assign input_set_addr 	= ((row << logN) + col) >> 1; // (N x r + c) / 2
+	// assign input_set_addr 	= ((row * N) + col) >> 1; // (N x r + c) / 2
 	assign input_sram_raddr = input_base_addr + input_set_addr + 12'h1;
 
 	always @(*) begin
@@ -311,8 +323,8 @@ module MyDesign (
 			end
 
 			if (input_matrix_done) begin
-				// TODO: Check if it's ok to use $clog2
-				input_base_addr <= input_base_addr + ((N << $clog2(N)) >> 1) + 1; // Go to the next input matrix
+				input_base_addr <= input_base_addr + ((N << logN) >> 1) + 1; // Go to the next input matrix
+				// input_base_addr <= input_base_addr + ((N * N) >> 1) + 1; // Go to the next input matrix
 				row <= 8'h0;
 				col <= 8'h0;
 			end
@@ -346,6 +358,7 @@ module MyDesign (
 	// Store input SRAM read data in a shift register
 	assign ibuf_push 	= input_data_valid & ~input_data_size & ibuf_ready;
 	assign N 			= input_matrix_size[7:0];
+	assign logN 		= `CLOG2(N);
 
 	always @(*) begin
 
