@@ -80,98 +80,83 @@ module MyDesign (
 
 	////////////////////////////////////////////////////////
 
-	reg  [ADDRW-1:0] base_addr;
-	wire [ADDRW-1:0] set_addr;
-	wire [ADDRW-1:0] start_addr;
+	reg [3:0] current_input_state;
+	reg [3:0] next_input_state;
+
+	reg [4:0] current_ibuf_state;
+	reg [4:0] next_ibuf_state;
+
+	reg  [ADDRW-1:0] input_base_addr;
+	wire [ADDRW-1:0] input_set_addr;
+	wire [ADDRW-1:0] input_sram_raddr;
+
+	reg  [DATAW-1:0] input_matrix_size;
+	wire [7:0]	     N;
 
 	reg  [7:0] row;
 	reg  [7:0] col;
 	wire [7:0] next_row;
 	wire [7:0] next_col;
 
-	// Control signals
-	reg  is_size_st0;
-	reg  is_size_st1;
-	reg  is_valid_st0;
-	reg  is_valid_st1;
-	reg  set_done;
-	wire col_done;
-	wire matrix_done;
+	reg  input_req_size;
+	reg  input_req_valid;
+	reg  input_req_fire;
 
-	reg  [DATAW-1:0] size;
-	wire [7:0]	     N;
+	reg  input_data_size;
+	reg  input_data_valid;
+
+	reg  input_set_done;
+	wire input_col_done;
+	wire input_matrix_done;
 
 	reg  [7:0] ibuf [15:0]; // Shift register
-	reg  signed [7:0] ibuf_out [3:0];
+	reg  ibuf_valid;
 	reg  ibuf_ready;
-	reg  ibuf_pop; // Pop one entry from ibuf instead of 2 entries
-	reg  do_multiply;
-	reg  set_done_st1;
+	reg  ibuf_fire;
 	wire ibuf_push;
+	reg  ibuf_pop;
+	reg  ibuf_empty;
+	reg  ibuf_multiply;
+	reg  ibuf_set_done;
+
+	reg  kernel_byteen;
+
+	reg  conv_valid;
+	reg  conv_set_done;
+
+	reg  signed [7:0]  ibuf_out [3:0];
+	wire signed [7:0]  kernel_rdata;
+	reg  signed [19:0] macc [3:0];
+
+	wire signed [19:0] max_pool1;
+	wire signed [19:0] max_pool2;
+	wire signed [19:0] max_pool;
+
+	reg  [19:0] max_pool_r;
+	wire [7:0]  relu;
+	reg         relu_valid;
 
 	integer i;
 
-	////////////////////////////////////////////////////////
-
-	// STAGE 0
-
-	//  Keep track of which row and column we're on
-
-	always @(posedge clk) begin
-
-		if (~reset_b) begin
-			base_addr  	<= 12'h0;
-			row 		<= 8'h0;
-			col 		<= 8'h0;
-		end else begin
-
-			if (set_done) begin
-				col <= next_col;
-			end
-
-			if (col_done) begin
-				col <= 8'h0;
-				row <= next_row;
-			end
-
-			if (matrix_done) begin
-				// TODO: Check if it's ok to use $clog2
-				base_addr <= base_addr + ((N << $clog2(N)) >> 1) + 1; // Go to the next input matrix
-				row <= 8'h0;
-				col <= 8'h0;
-			end
-		end
-	end
-
-	assign next_col 	= col + 8'h2;
-	assign next_row 	= row + 8'h2;
-	assign col_done 	= (next_col > (N - 2));
-	assign matrix_done 	= (next_row > (N - 2)); // Input to FSM
-
-	assign set_addr 	= ((row << $clog2(N)) + col) >> 1; // (N x r + c) / 2
-	assign start_addr 	= base_addr + set_addr + 12'h1;
-
-	////////////////////////////////////////////////////////
+	// STAGE 0 //////////////////////////////////////////////////////
 
 	// Compute input SRAM read address
+	assign next_col 	  = col + 8'h2;
+	assign next_row 	  = row + 8'h2;
 
-	reg [3:0] current_input_state;
-	reg [3:0] next_input_state;
+	assign input_col_done    = (next_col > (N - 2));
+	assign input_matrix_done = (next_row > (N - 2));
 
-	always @(posedge clk) begin
-		if (~reset_b) begin
-			current_input_state <= STATE_INPUT_IDLE;
-		end else begin
-			current_input_state <= next_input_state;
-		end
-	end
+	assign input_set_addr 	= ((row << $clog2(N)) + col) >> 1; // (N x r + c) / 2
+	assign input_sram_raddr = input_base_addr + input_set_addr + 12'h1;
 
 	always @(*) begin
 
 	dut_busy				= 1'b1;
-	is_valid_st0 			= 1'b0;
-	is_size_st0 			= 1'b0;
-	set_done 				= 1'b0;
+	input_req_valid 		= 1'b0;
+	input_req_fire			= 1'b0;
+	input_req_size 			= 1'b0;
+	input_set_done 			= 1'b0;
 	input_sram_read_address = 12'hx;
 
 	casex (current_input_state)
@@ -186,70 +171,69 @@ module MyDesign (
 
 	STATE_INPUT_READ_SIZE: begin
 		next_input_state 		= STATE_INPUT_CHECK_SIZE;
-		is_valid_st0 			= 1'b1;
-		is_size_st0				= 1'b1;
-		input_sram_read_address	= base_addr;
+		input_req_valid 		= 1'b1;
+		input_req_size			= 1'b1;
+		input_sram_read_address	= input_base_addr;
 	end
 
 	STATE_INPUT_CHECK_SIZE: begin
 		if (input_sram_read_data == 16'hff) begin
 			next_input_state 	= STATE_INPUT_IDLE;
-		end else begin
+		end else if (ibuf_empty) begin
 			next_input_state 	= STATE_INPUT_READ_ADDR1;
+		end else begin
+			next_input_state	= STATE_INPUT_CHECK_SIZE;
 		end
 	end
 
 	STATE_INPUT_READ_ADDR1: begin
-		if (ibuf_ready) begin
-			next_input_state 	= STATE_INPUT_READ_ADDR2;
-		end else begin
-			next_input_state	= STATE_INPUT_READ_ADDR1;
-		end
-		is_valid_st0 			= 1'b1;
-		input_sram_read_address	= start_addr;
+		next_input_state		= STATE_INPUT_READ_ADDR2;
+		input_req_valid 		= 1'b1;
+		input_req_fire			= 1'b1;
+		input_sram_read_address	= input_sram_raddr;
 	end
 
 	STATE_INPUT_READ_ADDR2: begin
-		next_input_state 		= STATE_INPUT_READ_ADDR3;
-		is_valid_st0			= 1'b1;
-		input_sram_read_address	= start_addr + 1;
+		next_input_state		= STATE_INPUT_READ_ADDR3;
+		input_req_valid			= 1'b1;
+		input_sram_read_address	= input_sram_raddr + 1;
 	end
 
 	STATE_INPUT_READ_ADDR3: begin
 		next_input_state 		= STATE_INPUT_READ_ADDR4;
-		is_valid_st0 			= 1'b1;
-		input_sram_read_address	= start_addr + (N >> 1);
+		input_req_valid 		= 1'b1;
+		input_sram_read_address	= input_sram_raddr + (N >> 1);
 	end
 
 	STATE_INPUT_READ_ADDR4: begin
 		next_input_state 		= STATE_INPUT_READ_ADDR5;
-		is_valid_st0 			= 1'b1;
-		input_sram_read_address	= start_addr + (N >> 1) + 1;
+		input_req_valid 		= 1'b1;
+		input_sram_read_address	= input_sram_raddr + (N >> 1) + 1;
 	end
 
 	STATE_INPUT_READ_ADDR5: begin
 		next_input_state 		= STATE_INPUT_READ_ADDR6;
-		is_valid_st0 			= 1'b1;
-		input_sram_read_address	= start_addr + N;
+		input_req_valid 		= 1'b1;
+		input_sram_read_address	= input_sram_raddr + N;
 	end
 
 	STATE_INPUT_READ_ADDR6: begin
 		next_input_state 		= STATE_INPUT_READ_ADDR7;
-		is_valid_st0 			= 1'b1;
-		input_sram_read_address	= start_addr + N + 1;
+		input_req_valid 		= 1'b1;
+		input_sram_read_address	= input_sram_raddr + N + 1;
 	end
 
 	STATE_INPUT_READ_ADDR7: begin
 		next_input_state 		= STATE_INPUT_READ_ADDR8;
-		is_valid_st0 			= 1'b1;
-		input_sram_read_address	= start_addr + (N + (N >> 1)); // (3 * N) / 2
+		input_req_valid 		= 1'b1;
+		input_sram_read_address	= input_sram_raddr + (N + (N >> 1)); // (3 * N) / 2
 	end
 
 	STATE_INPUT_READ_ADDR8: begin
 		next_input_state 		= STATE_INPUT_CHECK1;
-		is_valid_st0 			= 1'b1;
-		input_sram_read_address	= start_addr + (N + (N >> 1) + 1);
-		set_done				= 1'b1;
+		input_req_valid 		= 1'b1;
+		input_sram_read_address	= input_sram_raddr + (N + (N >> 1) + 1);
+		input_set_done			= 1'b1;
 	end
 
 	STATE_INPUT_CHECK1: begin
@@ -257,47 +241,217 @@ module MyDesign (
 	end
 
 	STATE_INPUT_CHECK2: begin
-		if (matrix_done) begin
+		if (input_matrix_done) begin
 			next_input_state 	= STATE_INPUT_READ_SIZE;
-		end else begin
+		end else if (ibuf_set_done) begin
 			next_input_state 	= STATE_INPUT_READ_ADDR1;
+		end else begin
+			next_input_state	= STATE_INPUT_CHECK2;
 		end
 	end
-			
 	endcase
 	end
 
-	////////////////////////////////////////////////////////
-
-	// Pipeline Register: Stage 0 -> Stage 1
-
-	always @(posedge clk) begin : pipe_reg_st_0_to_1
-
+	always @(posedge clk) begin
 		if (~reset_b) begin
-			is_valid_st1 	<= 1'b0;
-			is_size_st1 	<= 1'b0;
+			current_input_state <= STATE_INPUT_IDLE;
 		end else begin
-			is_valid_st1 	<= is_valid_st0;
-			is_size_st1 	<= is_size_st0;
+			current_input_state <= next_input_state;
 		end
 	end
 
-	////////////////////////////////////////////////////////
+	always @(posedge clk) begin
+		if (~reset_b) begin
+			input_base_addr  <= 12'h0;
+			row 		<= 8'h0;
+			col 		<= 8'h0;
+		end else begin
+			if (input_set_done) begin
+				col <= next_col;
+			end
 
-	// STAGE 1
+			if (input_col_done) begin
+				col <= 8'h0;
+				row <= next_row;
+			end
 
-	// Store SRAM read data in a shift register
+			if (input_matrix_done) begin
+				// TODO: Check if it's ok to use $clog2
+				input_base_addr <= input_base_addr + ((N << $clog2(N)) >> 1) + 1; // Go to the next input matrix
+				row <= 8'h0;
+				col <= 8'h0;
+			end
+		end
+	end
 
-	// FIXME: ~set_done_st1 = Hacky solution to avoid duplicate entries in ibuf
-	assign ibuf_push = is_valid_st1 & ~is_size_st1 & ibuf_ready & ~set_done_st1;
+	// Pipeline Register: Stage 0 -> Stage 1
+	always @(posedge clk) begin : pipe_reg_st_0_to_1
+
+		if (~reset_b) begin
+			input_data_valid 	<= 1'b0;
+			input_data_size 	<= 1'b0;
+			ibuf_fire           <= 1'b0;
+		end else begin
+			input_data_valid 	<= input_req_valid;
+			input_data_size 	<= input_req_size;
+			ibuf_fire 			<= input_req_fire;
+		end
+	end
+
+	// STAGE 1 //////////////////////////////////////////////////////
+
+	// Store input SRAM read data in a shift register
+	assign ibuf_push = input_data_valid & ~input_data_size & ibuf_ready;
+	assign N = input_matrix_size[7:0];
+
+	always @(*) begin
+
+	ibuf_ready 		= 1'b0;
+	ibuf_pop 		= 1'b0;
+	ibuf_empty 		= 1'b0;
+	ibuf_set_done 	= 1'b0;
+	ibuf_multiply 	= 1'b0;
+	kernel_byteen 	= 1'bx;
+	weights_sram_read_address = 12'hx;
+
+	ibuf_out[0] = ibuf[15];
+	ibuf_out[1] = ibuf[14];
+	ibuf_out[2] = ibuf[11];
+	ibuf_out[3] = ibuf[10];
+
+	casex (current_ibuf_state)	
+	STATE_IBUF_EMPTY: begin
+		if (ibuf_fire) begin
+			next_ibuf_state = STATE_IBUF_FILL2;
+		end else begin
+			next_ibuf_state = STATE_IBUF_EMPTY;
+		end
+		ibuf_ready	= 1'b1;
+		ibuf_empty 	= 1'b1;
+	end
+
+	STATE_IBUF_FILL2: begin
+		next_ibuf_state = STATE_IBUF_FILL4;
+		ibuf_ready 		= 1'b1;
+	end
+
+	STATE_IBUF_FILL4: begin
+		next_ibuf_state = STATE_IBUF_FILL6;
+		ibuf_ready 		= 1'b1;
+	end
+
+	STATE_IBUF_FILL6: begin
+		next_ibuf_state = STATE_IBUF_FILL8;
+		ibuf_ready 		= 1'b1;
+	end
+
+	STATE_IBUF_FILL8: begin
+		next_ibuf_state = STATE_IBUF_FILL10;
+		ibuf_ready 		= 1'b1;
+	end
+
+	STATE_IBUF_FILL10: begin
+		next_ibuf_state = STATE_IBUF_FILL12;
+		ibuf_ready 		= 1'b1;
+	end
+
+	STATE_IBUF_FILL12: begin
+		next_ibuf_state = STATE_IBUF_FILL14;
+		ibuf_ready 		= 1'b1;
+	end
+
+	STATE_IBUF_FILL14: begin
+		next_ibuf_state = STATE_IBUF_MULT1;
+		ibuf_ready 		= 1'b1;
+		weights_sram_read_address = 12'h0;
+	end
+
+	STATE_IBUF_MULT1: begin
+		next_ibuf_state	= STATE_IBUF_MULT2;
+		ibuf_multiply 	= 1'b1;
+		ibuf_pop		= 1'b1;
+		kernel_byteen 	= 1'b1;
+		weights_sram_read_address = 12'h0;
+	end
+
+	STATE_IBUF_MULT2: begin
+		next_ibuf_state	= STATE_IBUF_MULT3;
+		ibuf_multiply 	= 1'b1;
+		ibuf_pop		= 1'b1;
+		kernel_byteen 	= 1'b0;
+		weights_sram_read_address = 12'h1;
+	end
+
+	STATE_IBUF_MULT3: begin
+		next_ibuf_state	= STATE_IBUF_MULT4;
+		ibuf_multiply 	= 1'b1;
+		kernel_byteen 	= 1'b1;
+		weights_sram_read_address = 12'h1;
+	end
+
+	STATE_IBUF_MULT4: begin
+		next_ibuf_state	= STATE_IBUF_MULT5;
+		ibuf_multiply 	= 1'b1;
+		ibuf_pop		= 1'b1;
+		kernel_byteen 	= 1'b0;
+		weights_sram_read_address = 12'h2;
+	end
+
+	STATE_IBUF_MULT5: begin
+		next_ibuf_state	= STATE_IBUF_MULT6;
+		ibuf_multiply 	= 1'b1;
+		ibuf_pop		= 1'b1;
+		kernel_byteen 	= 1'b1;
+		weights_sram_read_address = 12'h2;
+	end
+
+	STATE_IBUF_MULT6: begin
+		next_ibuf_state	= STATE_IBUF_MULT7;
+		ibuf_multiply 	= 1'b1;
+		kernel_byteen 	= 1'b0;
+		weights_sram_read_address = 12'h3;
+	end
+
+	STATE_IBUF_MULT7: begin
+		next_ibuf_state	= STATE_IBUF_MULT8;
+		ibuf_multiply 	= 1'b1;
+		ibuf_pop		= 1'b1;
+		kernel_byteen 	= 1'b1;
+		weights_sram_read_address = 12'h3;
+	end
+
+	STATE_IBUF_MULT8: begin
+		next_ibuf_state	= STATE_IBUF_MULT9;
+		ibuf_multiply 	= 1'b1;
+		ibuf_pop		= 1'b1;
+		kernel_byteen 	= 1'b0;
+		weights_sram_read_address = 12'h4;
+	end
+
+	STATE_IBUF_MULT9: begin
+		next_ibuf_state	= STATE_IBUF_EMPTY;
+		ibuf_multiply 	= 1'b1;
+		ibuf_set_done	= 1'b1;
+		kernel_byteen 	= 1'b1;
+	end
+	endcase
+	end
+
+	always @(posedge clk) begin
+		if (~reset_b) begin
+			current_ibuf_state <= STATE_IBUF_EMPTY;
+		end else begin
+			current_ibuf_state <= next_ibuf_state;
+		end
+	end
 
 	always @(posedge clk) begin
 
 		if (~reset_b) begin
-			size <= 16'b0;
+			input_matrix_size <= 16'b0;
 		end else begin
-			if (is_size_st1) begin
-				size <= input_sram_read_data;
+			if (input_data_size) begin
+				input_matrix_size <= input_sram_read_data;
 			end
 
 			if (ibuf_pop) begin
@@ -317,240 +471,64 @@ module MyDesign (
 		end
 	end
 
-	assign N = size[7:0];
+	// STAGE 2: Convolution //////////////////////////////////////////////////////
 
-	////////////////////////////////////////////////////////
-
-	// Keep track of ibuffer state
-
-	reg [4:0] current_ibuf_state;
-	reg [4:0] next_ibuf_state;
-	reg kernel_pos;
-
-	always @(posedge clk) begin
-		if (~reset_b) begin
-			current_ibuf_state <= STATE_IBUF_EMPTY;
-		end else begin
-			current_ibuf_state <= next_ibuf_state;
-		end
-	end
-
-	always @(*) begin
-
-	ibuf_ready 	= 1'b0;
-	ibuf_pop 	= 1'b0;
-	do_multiply = 1'b0;
-	set_done_st1 = 1'b0;
-	weights_sram_read_address = 12'hx;
-	kernel_pos = 1'bx;
-
-	ibuf_out[0] = ibuf[15];
-	ibuf_out[1] = ibuf[14];
-	ibuf_out[2] = ibuf[11];
-	ibuf_out[3] = ibuf[10];
-
-	casex (current_ibuf_state)	
-	STATE_IBUF_EMPTY: begin
-		if (is_valid_st1 & ~is_size_st1) begin
-			next_ibuf_state = STATE_IBUF_FILL2;
-		end else begin
-			next_ibuf_state = STATE_IBUF_EMPTY;
-		end
-		ibuf_ready			= 1'b1;
-	end
-
-	STATE_IBUF_FILL2: begin
-		if (is_valid_st1 & ~is_size_st1) begin
-			next_ibuf_state = STATE_IBUF_FILL4;
-		end else begin
-			next_ibuf_state = STATE_IBUF_FILL2;
-		end
-		ibuf_ready 			= 1'b1;
-	end
-
-	STATE_IBUF_FILL4: begin
-		if (is_valid_st1 & ~is_size_st1) begin
-			next_ibuf_state = STATE_IBUF_FILL6;
-		end else begin
-			next_ibuf_state = STATE_IBUF_FILL4;
-		end
-		ibuf_ready 			= 1'b1;
-	end
-
-	STATE_IBUF_FILL6: begin
-		if (is_valid_st1 & ~is_size_st1) begin
-			next_ibuf_state = STATE_IBUF_FILL8;
-		end else begin
-			next_ibuf_state = STATE_IBUF_FILL6;
-		end
-		ibuf_ready 			= 1'b1;
-	end
-
-	STATE_IBUF_FILL8: begin
-		if (is_valid_st1 & ~is_size_st1) begin
-			next_ibuf_state = STATE_IBUF_FILL10;
-		end else begin
-			next_ibuf_state = STATE_IBUF_FILL8;
-		end
-		ibuf_ready 			= 1'b1;
-	end
-
-	STATE_IBUF_FILL10: begin
-		if (is_valid_st1 & ~is_size_st1) begin
-			next_ibuf_state = STATE_IBUF_FILL12;
-		end else begin
-			next_ibuf_state = STATE_IBUF_FILL10;
-		end
-		ibuf_ready 			= 1'b1;
-	end
-
-	STATE_IBUF_FILL12: begin
-		if (is_valid_st1 & ~is_size_st1) begin
-			next_ibuf_state = STATE_IBUF_FILL14;
-		end else begin
-			next_ibuf_state = STATE_IBUF_FILL12;
-		end
-		ibuf_ready 			= 1'b1;
-	end
-
-	STATE_IBUF_FILL14: begin
-		if (is_valid_st1 & ~is_size_st1) begin
-			next_ibuf_state = STATE_IBUF_MULT1;
-		end else begin
-			next_ibuf_state = STATE_IBUF_FILL14;
-		end
-		ibuf_ready 			= 1'b1;
-		weights_sram_read_address = 12'h0;
-	end
-
-	STATE_IBUF_MULT1: begin
-		next_ibuf_state		= STATE_IBUF_MULT2;
-		do_multiply 		= 1'b1;
-		ibuf_pop			= 1'b1;
-		weights_sram_read_address = 12'h0;
-		kernel_pos = 1'b1;
-	end
-
-	STATE_IBUF_MULT2: begin
-		next_ibuf_state		= STATE_IBUF_MULT3;
-		do_multiply 		= 1'b1;
-		ibuf_pop			= 1'b1;
-		weights_sram_read_address = 12'h1;
-		kernel_pos = 1'b0;
-	end
-
-	STATE_IBUF_MULT3: begin
-		next_ibuf_state		= STATE_IBUF_MULT4;
-		do_multiply 		= 1'b1;
-		weights_sram_read_address = 12'h1;
-		kernel_pos = 1'b1;
-	end
-
-	STATE_IBUF_MULT4: begin
-		next_ibuf_state		= STATE_IBUF_MULT5;
-		do_multiply 		= 1'b1;
-		ibuf_pop			= 1'b1;
-		weights_sram_read_address = 12'h2;
-		kernel_pos = 1'b0;
-	end
-
-	STATE_IBUF_MULT5: begin
-		next_ibuf_state		= STATE_IBUF_MULT6;
-		do_multiply 		= 1'b1;
-		ibuf_pop			= 1'b1;
-		weights_sram_read_address = 12'h2;
-		kernel_pos = 1'b1;
-	end
-
-
-	STATE_IBUF_MULT6: begin
-		next_ibuf_state		= STATE_IBUF_MULT7;
-		do_multiply 		= 1'b1;
-		weights_sram_read_address = 12'h3;
-		kernel_pos = 1'b0;
-	end
-
-	STATE_IBUF_MULT7: begin
-		next_ibuf_state		= STATE_IBUF_MULT8;
-		do_multiply 		= 1'b1;
-		ibuf_pop			= 1'b1;
-		weights_sram_read_address = 12'h3;
-		kernel_pos = 1'b1;
-	end
-
-	STATE_IBUF_MULT8: begin
-		next_ibuf_state		= STATE_IBUF_MULT9;
-		do_multiply 		= 1'b1;
-		ibuf_pop			= 1'b1;
-		weights_sram_read_address = 12'h4;
-		kernel_pos = 1'b0;
-	end
-
-	STATE_IBUF_MULT9: begin
-		next_ibuf_state		= STATE_IBUF_EMPTY;
-		do_multiply 		= 1'b1;
-		set_done_st1		= 1'b1;
-		ibuf_ready			= 1'b1;
-		kernel_pos = 1'b1;
-	end
-	endcase
-	end
-
-	////////////////////////////////////////////////////////
-
-	// STAGE 2: Multiplication with kernel
-
-	wire signed [7:0] kernel_rdata;
-
-	assign kernel_rdata = kernel_pos ? weights_sram_read_data[8 +: 8] : weights_sram_read_data[0 +: 8];
-
-	reg signed [19:0] multiply_r [3:0];
+	assign kernel_rdata = kernel_byteen ? weights_sram_read_data[8 +: 8] : weights_sram_read_data[0 +: 8];
 
 	genvar j;
 	generate
 		for (j = 0; j < 4; j = j + 1) begin : mul
-			wire [19:0] multiply = kernel_rdata  * ibuf_out[j];
+			wire [19:0] mult = kernel_rdata  * ibuf_out[j];
 
 			always @(posedge clk) begin
 				if (~reset_b) begin
-					multiply_r[j] <= 20'h0;
+					macc[j] <= 20'h0;
 				end
-				if (do_multiply) begin
-					multiply_r[j] <= multiply_r[j] + multiply;
+				if (ibuf_empty) begin
+					macc[j] <= 20'h0;
+				end
+				if (ibuf_multiply) begin
+					macc[j] <= macc[j] + mult;
 				end
 			end
 		end
 	endgenerate
 
-	// Pipeline register
-	reg is_valid_st2;
-	always @(posedge clk) begin
+	// Pipeline Register: Stage 2 -> Stage 3
+	always @(posedge clk) begin : pipe_reg_st_2_to_3
 		if (~reset_b) begin
-			is_valid_st2 <= 0;
+			conv_valid <= 0;
 		end else begin
-			is_valid_st2 <= set_done_st1;
+			conv_valid <= ibuf_set_done;
 		end
 	end
 
-	////////////////////////////////////////////////////////
+	// STAGE 3: Max Pool  //////////////////////////////////////////////////////
 
-	// STAGE 4: Max Pool
-
-	wire [19:0] max_pool1;
-	wire [19:0] max_pool2;
-	wire [19:0] max_pool;
-
-	assign max_pool1 = (multiply_r[0] > multiply_r[1]) ? multiply_r[0] : multiply_r[1];
-	assign max_pool2 = (multiply_r[2] > multiply_r[3]) ? multiply_r[2] : multiply_r[3];
+	assign max_pool1 = (macc[0] > macc[1]) ? macc[0] : macc[1];
+	assign max_pool2 = (macc[2] > macc[3]) ? macc[2] : macc[3];
 	assign max_pool = (max_pool1 > max_pool2) ? max_pool1 : max_pool2;
 
-	////////////////////////////////////////////////////////
+	// Pipeline Register: Stage 3 -> Stage 4
+	always @(posedge clk) begin : pipe_reg_st_3_to_4
+		if (~reset_b) begin
+			max_pool_r <= 20'h0;
+			relu_valid <= 1'b0;
+		end else begin
+			max_pool_r <= max_pool;
+			relu_valid <= conv_valid;
+		end
+	end
 
-	// Debugging
+	// STAGE 4: ReLu //////////////////////////////////////////////////////////
+
+	assign relu = max_pool_r[19] ? 8'h0 : (max_pool_r > 8'h7f) ? 8'h7f : {1'b0, max_pool_r[0 +: 7]};
+
+	// DEBUGGING //////////////////////////////////////////////////////
 
 	always @(posedge clk) begin
 
-		// if (is_valid_st1) begin
+		// if (input_data_valid) begin
 		// 	$display ("%d: SRAM raddr = %h, SRAM rdata = %h", $time, input_sram_read_address, input_sram_read_data);
 		// 	$display ("ibuf state = %0d", current_ibuf_state);
 		// 	for (i = 0; i < 16; i = i + 1) begin
@@ -558,22 +536,26 @@ module MyDesign (
 		// 	end
 		// end
 		
-		if (set_done_st1) begin
-			$display ("ibuf_out_0 = %d, ibuf_out1 = %d, ibuf_out2 = %d, ibuf_out3 = %d", ibuf_out[0], ibuf_out[1], ibuf_out[2], ibuf_out[3]);
-		end
+		// if (ibuf_set_done) begin
+		// 	$display ("ibuf_out_0 = %h, ibuf_out1 = %h, ibuf_out2 = %h, ibuf_out3 = %h", ibuf_out[0], ibuf_out[1], ibuf_out[2], ibuf_out[3]);
+		// end
 
-		if (matrix_done) begin
-			$display ("\nmatrix done!\n");
-		end
+		// if (input_matrix_done) begin
+		// 	$display ("\nmatrix read done!\n");
+		// end
 
-		// if (is_valid_st2) begin
+		// if (conv_valid) begin
 		// 	for (i = 0; i < 4; i = i + 1) begin
-		// 		$display ("multiply_r[%0d] = %h", i, multiply_r[i]);
+		// 		$display ("macc[%0d] = %h", i, macc[i]);
 		// 	end	
 		// end
 
-		if (is_valid_st2) begin
-			$display ("max_pool = %d", max_pool);
+		// if (conv_valid) begin
+		// 	$display ("max_pool = %d", max_pool);
+		// end
+
+		if (relu_valid) begin
+			$display ("relu = %d", relu);
 		end
 	end
 

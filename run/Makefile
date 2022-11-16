@@ -10,10 +10,10 @@ vlog-golden:
 	/bin/bash -c "vlog -sv $(GOLDEN_SRC)"	
 
 verify-564-extra:
-	/bin/bash -c "vsim -voptargs=+acc -c tb_top +CLASS=564 +ROUNDS=2 +TIMEOUT=1000000 -do \"run 1000ns\" "	
+	/bin/bash -c "vsim -voptargs=+acc -c tb_top +CLASS=564 +ROUNDS=2 +TIMEOUT=1000000 -do \"run -all\" "	
 
 verify-564-base:
-	/bin/bash -c "vsim -voptargs=+acc -c tb_top +RUN_TYPE=base +CLASS=564 +ROUNDS=2 +TIMEOUT=1000000 -do \"run -all\" "	
+	/bin/bash -c "vsim -voptargs=+acc -c tb_top +RUN_TYPE=base +CLASS=564 +ROUNDS=2 +TIMEOUT=1000000 -do \"run 10000ns\" "	
 
 verify-464-extra:
 	/bin/bash -c "vsim -voptargs=+acc -c tb_top +CLASS=464 +ROUNDS=2 +TIMEOUT=1000000 -do \"run -all\" "	
