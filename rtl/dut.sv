@@ -316,6 +316,13 @@ module MyDesign (
 				row <= 8'h0;
 				col <= 8'h0;
 			end
+
+			// Reset input address once we're done with all input matrices
+			if (~dut_busy) begin
+				input_base_addr <= 12'h0;
+				row <= 8'h0;
+				col <= 8'h0;
+			end
 		end
 	end
 
