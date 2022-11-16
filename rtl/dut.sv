@@ -57,7 +57,8 @@ module MyDesign (
 		STATE_INPUT_READ_ADDR7 		= 4'h9,
 		STATE_INPUT_READ_ADDR8 		= 4'ha,
 		STATE_INPUT_CHECK1  		= 4'hb,
-		STATE_INPUT_CHECK2 			= 4'hc;
+		STATE_INPUT_CHECK2 			= 4'hc,
+		STATE_INPUT_DONE 			= 4'hd;
 
 	localparam [4:0]
 		STATE_IBUF_EMPTY			= 5'h0,
@@ -83,16 +84,23 @@ module MyDesign (
 		STATE_MATRIX_INCOMPLETE1	= 2'h1,
 		STATE_MATRIX_COMPLETE  		= 2'h2;
 
+	localparam [2:0]
+		STATE_RELU_STORE			= 1'b0,
+		STATE_RELU_READY			= 1'b1;
+
 	////////////////////////////////////////////////////////
 
-	reg [3:0] current_input_state;
-	reg [3:0] next_input_state;
+	reg  [3:0] current_input_state;
+	reg  [3:0] next_input_state;
 
-	reg [4:0] current_ibuf_state;
-	reg [4:0] next_ibuf_state;
+	reg  [4:0] current_ibuf_state;
+	reg  [4:0] next_ibuf_state;
 
-	reg [2:0] current_matrix_state;
-	reg [2:0] next_matrix_state;
+	reg  [2:0] current_matrix_state;
+	reg  [2:0] next_matrix_state;
+
+	reg  [1:0] current_relu_state;
+	reg  [1:0] next_relu_state;
 
 	reg  [ADDRW-1:0] input_base_addr;
 	wire [ADDRW-1:0] input_set_addr;
@@ -144,13 +152,20 @@ module MyDesign (
 	reg  			   max_pool_valid;
 	reg                max_pool_matrix_done;
 
-	wire [7:0]  relu;
-	reg         relu_valid;
-	reg    		relu_matrix_done;
+	wire [7:0] relu;
+	reg  [7:0] relu_old;
+	reg        relu_valid;
+	reg        relu_ready;
+	wire       relu_fire;
+	reg    	   relu_matrix_done;
+	reg        relu_store;
+	
+	reg output_matrix_done;
+	reg output_done;
 
 	integer i;
 
-	// STAGE 0 //////////////////////////////////////////////////////
+	// STAGE 1 //////////////////////////////////////////////////////
 
 	// Compute input SRAM read address
 	assign next_col 	  = col + 8'h2;
@@ -181,6 +196,14 @@ module MyDesign (
 		dut_busy 				= 1'b0;
 	end
 
+	STATE_INPUT_DONE: begin
+		if (output_done) begin
+			next_input_state 	= STATE_INPUT_IDLE;
+		end else begin
+			next_input_state 	= STATE_INPUT_DONE;
+		end	
+	end
+
 	STATE_INPUT_READ_SIZE: begin
 		next_input_state 		= STATE_INPUT_CHECK_SIZE;
 		input_req_valid 		= 1'b1;
@@ -189,8 +212,8 @@ module MyDesign (
 	end
 
 	STATE_INPUT_CHECK_SIZE: begin
-		if (input_sram_read_data == 16'hff) begin
-			next_input_state 	= STATE_INPUT_IDLE;
+		if (input_sram_read_data == 16'hffff) begin
+			next_input_state 	= STATE_INPUT_DONE;
 		end else if (ibuf_empty) begin
 			next_input_state 	= STATE_INPUT_READ_ADDR1;
 		end else begin
@@ -296,10 +319,10 @@ module MyDesign (
 		end
 	end
 
-	// STAGE 1 //////////////////////////////////////////////////////
+	// STAGE 2 //////////////////////////////////////////////////////
 
 	// Pipeline Register
-	always @(posedge clk) begin : pipe_reg_st_0_to_1
+	always @(posedge clk) begin : pipe_reg_st_1_to_2
 		if (~reset_b) begin
 			input_data_valid 	<= 1'b0;
 			input_data_size 	<= 1'b0;
@@ -314,8 +337,8 @@ module MyDesign (
 	end
 
 	// Store input SRAM read data in a shift register
-	assign ibuf_push = input_data_valid & ~input_data_size & ibuf_ready;
-	assign N = input_matrix_size[7:0];
+	assign ibuf_push 	= input_data_valid & ~input_data_size & ibuf_ready;
+	assign N 			= input_matrix_size[7:0];
 
 	always @(*) begin
 
@@ -511,10 +534,10 @@ module MyDesign (
 		end
 	end
 
-	// STAGE 2: Convolution //////////////////////////////////////////////////////
+	// STAGE 3: Convolution //////////////////////////////////////////////////////
 
 	// Pipeline Register
-	always @(posedge clk) begin : pipe_reg_st_1_to_2
+	always @(posedge clk) begin : pipe_reg_st_2_to_3
 		if (~reset_b) begin
 			conv_valid 			<= 1'b0;
 			conv_matrix_done 	<= 1'b0;
@@ -546,10 +569,10 @@ module MyDesign (
 		end
 	endgenerate
 
-	// STAGE 3: Max Pool  //////////////////////////////////////////////////////
+	// STAGE 4: Max Pool  //////////////////////////////////////////////////////
 
 	// Pipeline Register
-	always @(posedge clk) begin : pipe_reg_st_2_to_3
+	always @(posedge clk) begin : pipe_reg_st_3_to_4
 		if (~reset_b) begin
 			max_pool_valid 			<= 1'b0;
 			max_pool_matrix_done 	<= 1'b0;
@@ -563,28 +586,85 @@ module MyDesign (
 	assign max_pool2 = (macc[2] > macc[3]) ? macc[2] : macc[3];
 	assign max_pool = (max_pool1 > max_pool2) ? max_pool1 : max_pool2;
 
-	// STAGE 4: ReLu //////////////////////////////////////////////////////////
+	// STAGE 5: ReLu //////////////////////////////////////////////////////////
 
 	// Pipeline Register
-	always @(posedge clk) begin : pipe_reg_st_3_to_4
+	always @(posedge clk) begin : pipe_reg_st_4_to_5
 		if (~reset_b) begin
-			max_pool_r <= 20'h0;
-			relu_valid <= 1'b0;
-			relu_matrix_done <= 1'b0;
+			max_pool_r 			<= 20'h0;
+			relu_valid 			<= 1'b0;
+			relu_matrix_done 	<= 1'b0;
 		end else begin
-			max_pool_r <= max_pool;
-			relu_valid <= conv_valid;
-			relu_matrix_done <= conv_matrix_done;
+			max_pool_r 			<= max_pool;
+			relu_valid 			<= conv_valid;
+			relu_matrix_done 	<= conv_matrix_done;
 		end
 	end
 
 	assign relu = max_pool_r[19] ? 8'h0 : (max_pool_r > 8'h7f) ? 8'h7f : {1'b0, max_pool_r[0 +: 7]};
+	assign relu_fire = relu_valid & relu_ready;
 
+	always @(*) begin
+	casex (current_relu_state)
+	STATE_RELU_STORE: begin
+		if (relu_valid) begin
+			next_relu_state = STATE_RELU_READY;
+		end else begin
+			next_relu_state = STATE_RELU_STORE;
+		end
+		relu_store = 1'b1;
+		relu_ready = 1'b0;
+	end
 
-	// STAGE 5 //////////////////////////////////////////////////////////
+	STATE_RELU_READY: begin
+		if (relu_valid | relu_matrix_done) begin
+			next_relu_state = STATE_RELU_STORE;
+		end else begin
+			next_relu_state = STATE_RELU_READY;
+		end
+		relu_store = 1'b0;
+		relu_ready = 1'b1;
+	end
+	endcase
+	end
 
-	// Write to Output SRAM
+	// Write to output SRAM
+	always @(posedge clk) begin
+		if (~reset_b) begin
+			current_relu_state 			<= STATE_RELU_STORE;
+			output_sram_write_enable 	<= 1'b0;
+			output_sram_write_addresss 	<= 12'hfff;
+			output_sram_write_data 		<= 16'h0;
+		end else begin
 
+			if (~dut_busy) begin
+				output_sram_write_addresss <= 12'hfff;
+			end
+
+			current_relu_state 			<= next_relu_state;
+			output_matrix_done 			<= relu_matrix_done;
+			output_done 				<= output_matrix_done;
+			output_sram_write_enable    <= relu_fire | relu_matrix_done;
+
+			if (relu_store & relu_valid) begin
+				relu_old <= relu;
+			end
+
+			if (relu_fire | relu_matrix_done) begin
+				output_sram_write_addresss 	<= output_sram_write_addresss + 12'b1;
+			end
+
+			if (relu_fire) begin
+				output_sram_write_data 		<= {relu_old, relu};
+			end	
+
+			if (relu_matrix_done) begin
+				output_sram_write_data 		<= {relu_old, 8'h0};
+			end
+		end
+	end
+
+	// STAGE 6 //////////////////////////////////////////////////////////
 
 
 
@@ -618,12 +698,16 @@ module MyDesign (
 		// 	$display ("max_pool = %d", max_pool);
 		// end
 
-		if (relu_valid) begin
-			$display ("relu = %d", relu);
+		// if (relu_valid) begin
+		// 	$display ("relu = %d", relu);
+		// end
+
+		if (output_sram_write_enable) begin
+			$display ("@%0h \t %h", output_sram_write_addresss, output_sram_write_data);
 		end
 
-		if (relu_matrix_done) begin
-			$display ("\nrelu matrix done!\n");
+		if (output_matrix_done) begin
+			$display ("\noutput matrix done!\n");
 		end
 	end
 
