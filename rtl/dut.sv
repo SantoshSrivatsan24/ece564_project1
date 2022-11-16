@@ -78,6 +78,11 @@ module MyDesign (
 		STATE_IBUF_MULT8			= 5'h10,
 		STATE_IBUF_MULT9			= 5'h11;
 
+	localparam [2:0]
+		STATE_MATRIX_INCOMPLETE0	= 2'h0,
+		STATE_MATRIX_INCOMPLETE1	= 2'h1,
+		STATE_MATRIX_COMPLETE  		= 2'h2;
+
 	////////////////////////////////////////////////////////
 
 	reg [3:0] current_input_state;
@@ -85,6 +90,9 @@ module MyDesign (
 
 	reg [4:0] current_ibuf_state;
 	reg [4:0] next_ibuf_state;
+
+	reg [2:0] current_matrix_state;
+	reg [2:0] next_matrix_state;
 
 	reg  [ADDRW-1:0] input_base_addr;
 	wire [ADDRW-1:0] input_set_addr;
@@ -108,9 +116,9 @@ module MyDesign (
 	reg  input_set_done;
 	wire input_col_done;
 	wire input_matrix_done;
+	reg  input_matrix_done_r;
 
 	reg  [7:0] ibuf [15:0]; // Shift register
-	reg  ibuf_valid;
 	reg  ibuf_ready;
 	reg  ibuf_fire;
 	wire ibuf_push;
@@ -118,11 +126,12 @@ module MyDesign (
 	reg  ibuf_empty;
 	reg  ibuf_multiply;
 	reg  ibuf_set_done;
+	reg  ibuf_matrix_done;
 
 	reg  kernel_byteen;
 
 	reg  conv_valid;
-	reg  conv_set_done;
+	reg  conv_matrix_done;
 
 	reg  signed [7:0]  ibuf_out [3:0];
 	wire signed [7:0]  kernel_rdata;
@@ -131,10 +140,13 @@ module MyDesign (
 	wire signed [19:0] max_pool1;
 	wire signed [19:0] max_pool2;
 	wire signed [19:0] max_pool;
+	reg         [19:0] max_pool_r;
+	reg  			   max_pool_valid;
+	reg                max_pool_matrix_done;
 
-	reg  [19:0] max_pool_r;
 	wire [7:0]  relu;
 	reg         relu_valid;
+	reg    		relu_matrix_done;
 
 	integer i;
 
@@ -284,21 +296,22 @@ module MyDesign (
 		end
 	end
 
-	// Pipeline Register: Stage 0 -> Stage 1
-	always @(posedge clk) begin : pipe_reg_st_0_to_1
+	// STAGE 1 //////////////////////////////////////////////////////
 
+	// Pipeline Register
+	always @(posedge clk) begin : pipe_reg_st_0_to_1
 		if (~reset_b) begin
 			input_data_valid 	<= 1'b0;
 			input_data_size 	<= 1'b0;
+			input_matrix_done_r <= 1'b0;
 			ibuf_fire           <= 1'b0;
 		end else begin
 			input_data_valid 	<= input_req_valid;
 			input_data_size 	<= input_req_size;
+			input_matrix_done_r <= input_matrix_done;
 			ibuf_fire 			<= input_req_fire;
 		end
 	end
-
-	// STAGE 1 //////////////////////////////////////////////////////
 
 	// Store input SRAM read data in a shift register
 	assign ibuf_push = input_data_valid & ~input_data_size & ibuf_ready;
@@ -437,18 +450,45 @@ module MyDesign (
 	endcase
 	end
 
+	always @(*) begin
+	ibuf_matrix_done = 1'b0;
+
+	casex (current_matrix_state)
+	STATE_MATRIX_INCOMPLETE0: begin
+		if (input_matrix_done_r) begin
+			next_matrix_state 	= STATE_MATRIX_INCOMPLETE1;
+		end
+	end
+
+	STATE_MATRIX_INCOMPLETE1: begin
+		if (ibuf_set_done) begin
+			next_matrix_state 	= STATE_MATRIX_COMPLETE;
+		end
+	end
+
+	STATE_MATRIX_COMPLETE: begin
+		next_matrix_state 		= STATE_MATRIX_INCOMPLETE0;
+		ibuf_matrix_done 		= 1'b1;
+	end
+	endcase
+	end
+
 	always @(posedge clk) begin
 		if (~reset_b) begin
 			current_ibuf_state <= STATE_IBUF_EMPTY;
+			current_matrix_state <= STATE_MATRIX_INCOMPLETE0;
 		end else begin
 			current_ibuf_state <= next_ibuf_state;
+			current_matrix_state <= next_matrix_state;
 		end
 	end
 
 	always @(posedge clk) begin
-
 		if (~reset_b) begin
-			input_matrix_size <= 16'b0;
+			input_matrix_size <= 16'h0;
+			for (i = 0; i < 16; i = i + 1) begin
+				ibuf[i] <= 8'h0;
+			end
 		end else begin
 			if (input_data_size) begin
 				input_matrix_size <= input_sram_read_data;
@@ -473,56 +513,80 @@ module MyDesign (
 
 	// STAGE 2: Convolution //////////////////////////////////////////////////////
 
+	// Pipeline Register
+	always @(posedge clk) begin : pipe_reg_st_1_to_2
+		if (~reset_b) begin
+			conv_valid 			<= 1'b0;
+			conv_matrix_done 	<= 1'b0;
+		end else begin
+			conv_valid 			<= ibuf_set_done;
+			conv_matrix_done 	<= ibuf_matrix_done;
+		end
+	end
+
 	assign kernel_rdata = kernel_byteen ? weights_sram_read_data[8 +: 8] : weights_sram_read_data[0 +: 8];
 
 	genvar j;
 	generate
-		for (j = 0; j < 4; j = j + 1) begin : mul
-			wire [19:0] mult = kernel_rdata  * ibuf_out[j];
+		for (j = 0; j < 4; j = j + 1) begin : muladd
+			wire [19:0] mult = kernel_rdata  * ibuf_out[j]; // Multiply
 
 			always @(posedge clk) begin
 				if (~reset_b) begin
 					macc[j] <= 20'h0;
-				end
-				if (ibuf_empty) begin
-					macc[j] <= 20'h0;
-				end
-				if (ibuf_multiply) begin
-					macc[j] <= macc[j] + mult;
+				end else begin
+					if (ibuf_empty) begin
+						macc[j] <= 20'h0;
+					end
+					if (ibuf_multiply) begin
+						macc[j] <= macc[j] + mult; // Accumulate
+					end
 				end
 			end
 		end
 	endgenerate
 
-	// Pipeline Register: Stage 2 -> Stage 3
+	// STAGE 3: Max Pool  //////////////////////////////////////////////////////
+
+	// Pipeline Register
 	always @(posedge clk) begin : pipe_reg_st_2_to_3
 		if (~reset_b) begin
-			conv_valid <= 0;
+			max_pool_valid 			<= 1'b0;
+			max_pool_matrix_done 	<= 1'b0;
 		end else begin
-			conv_valid <= ibuf_set_done;
+			max_pool_valid 			<= conv_valid;
+			max_pool_matrix_done 	<= conv_matrix_done;
 		end
 	end
-
-	// STAGE 3: Max Pool  //////////////////////////////////////////////////////
 
 	assign max_pool1 = (macc[0] > macc[1]) ? macc[0] : macc[1];
 	assign max_pool2 = (macc[2] > macc[3]) ? macc[2] : macc[3];
 	assign max_pool = (max_pool1 > max_pool2) ? max_pool1 : max_pool2;
 
-	// Pipeline Register: Stage 3 -> Stage 4
+	// STAGE 4: ReLu //////////////////////////////////////////////////////////
+
+	// Pipeline Register
 	always @(posedge clk) begin : pipe_reg_st_3_to_4
 		if (~reset_b) begin
 			max_pool_r <= 20'h0;
 			relu_valid <= 1'b0;
+			relu_matrix_done <= 1'b0;
 		end else begin
 			max_pool_r <= max_pool;
 			relu_valid <= conv_valid;
+			relu_matrix_done <= conv_matrix_done;
 		end
 	end
 
-	// STAGE 4: ReLu //////////////////////////////////////////////////////////
-
 	assign relu = max_pool_r[19] ? 8'h0 : (max_pool_r > 8'h7f) ? 8'h7f : {1'b0, max_pool_r[0 +: 7]};
+
+
+	// STAGE 5 //////////////////////////////////////////////////////////
+
+	// Write to Output SRAM
+
+
+
 
 	// DEBUGGING //////////////////////////////////////////////////////
 
@@ -540,8 +604,8 @@ module MyDesign (
 		// 	$display ("ibuf_out_0 = %h, ibuf_out1 = %h, ibuf_out2 = %h, ibuf_out3 = %h", ibuf_out[0], ibuf_out[1], ibuf_out[2], ibuf_out[3]);
 		// end
 
-		// if (input_matrix_done) begin
-		// 	$display ("\nmatrix read done!\n");
+		// if (ibuf_matrix_done) begin
+		// 	$display ("\nmatrix multiply done!\n");
 		// end
 
 		// if (conv_valid) begin
@@ -556,6 +620,10 @@ module MyDesign (
 
 		if (relu_valid) begin
 			$display ("relu = %d", relu);
+		end
+
+		if (relu_matrix_done) begin
+			$display ("\nrelu matrix done!\n");
 		end
 	end
 
