@@ -112,6 +112,8 @@ module MyDesign (
 	reg  [1:0] current_relu_state;
 	reg  [1:0] next_relu_state;
 
+	// Stage 1 datapath
+
 	reg  [ADDRW-1:0] input_base_addr;
 	wire [ADDRW-1:0] input_set_addr;
 	wire [ADDRW-1:0] input_sram_raddr;
@@ -122,20 +124,22 @@ module MyDesign (
 
 	reg  [7:0] row;
 	reg  [7:0] col;
-	wire [7:0] next_row;
-	wire [7:0] next_col;
 
+
+	// Stage 1 Control signals
 	reg  input_req_size;
 	reg  input_req_valid;
 	reg  input_req_fire;
-
-	reg  input_data_size;
-	reg  input_data_valid;
-
 	reg  input_set_done;
 	wire input_col_done;
 	wire input_matrix_done;
 	reg  input_matrix_done_r;
+	reg [4:0] input_addr_sel;
+
+	// Stage 2 Control signals
+
+	reg  input_data_size;
+	reg  input_data_valid;
 
 	reg  [7:0] ibuf [15:0]; // Shift register
 	reg  ibuf_ready;
@@ -178,125 +182,122 @@ module MyDesign (
 
 	// STAGE 1 //////////////////////////////////////////////////////
 
-	// Compute input SRAM read address
-	assign next_col 	  = col + 8'h2;
-	assign next_row 	  = row + 8'h2;
-
-	assign input_col_done    = (next_col > (N - 2));
-	assign input_matrix_done = (next_row > (N - 2));
-
-	assign input_set_addr 	= ((row << logN) + col) >> 1; // (N x r + c) / 2
-	assign input_sram_raddr = input_base_addr + input_set_addr + 12'h1;
+	// Controller
 
 	always @(*) begin
-
 	dut_busy				= 1'b1;
 	input_req_valid 		= 1'b0;
 	input_req_fire			= 1'b0;
 	input_req_size 			= 1'b0;
 	input_set_done 			= 1'b0;
-	input_sram_read_address = 12'hx;
+	input_addr_sel			= 4'hx;
 
 	casex (current_input_state)
 	STATE_INPUT_IDLE: begin
 		if (dut_run) begin
-			next_input_state 	= STATE_INPUT_READ_SIZE;
+			next_input_state = STATE_INPUT_READ_SIZE;
 		end else begin 
-			next_input_state 	= STATE_INPUT_IDLE;
+			next_input_state = STATE_INPUT_IDLE;
 		end
-		dut_busy 				= 1'b0;
+		dut_busy 			 = 1'b0;
 	end
 
 	STATE_INPUT_DONE: begin
 		if (output_done) begin
-			next_input_state 	= STATE_INPUT_IDLE;
+			next_input_state = STATE_INPUT_IDLE;
 		end else begin
-			next_input_state 	= STATE_INPUT_DONE;
+			next_input_state = STATE_INPUT_DONE;
 		end	
 	end
 
 	STATE_INPUT_READ_SIZE: begin
-		next_input_state 		= STATE_INPUT_CHECK_SIZE;
-		input_req_valid 		= 1'b1;
-		input_req_size			= 1'b1;
-		input_sram_read_address	= input_base_addr;
+		next_input_state 	= STATE_INPUT_CHECK_SIZE;
+		input_req_valid 	= 1'b1;
+		input_req_size		= 1'b1;
+		input_addr_sel		= 4'b0000;
 	end
 
 	STATE_INPUT_CHECK_SIZE: begin
 		if (input_sram_read_data == 16'hffff) begin
-			next_input_state 	= STATE_INPUT_DONE;
+			next_input_state = STATE_INPUT_DONE;
 		end else if (ibuf_empty) begin
-			next_input_state 	= STATE_INPUT_READ_ADDR1;
+			next_input_state = STATE_INPUT_READ_ADDR1;
 		end else begin
-			next_input_state	= STATE_INPUT_CHECK_SIZE;
+			next_input_state = STATE_INPUT_CHECK_SIZE;
 		end
 	end
 
 	STATE_INPUT_READ_ADDR1: begin
-		next_input_state		= STATE_INPUT_READ_ADDR2;
-		input_req_valid 		= 1'b1;
-		input_req_fire			= 1'b1;
-		input_sram_read_address	= input_sram_raddr;
+		next_input_state	= STATE_INPUT_READ_ADDR2;
+		input_req_valid 	= 1'b1;
+		input_req_fire		= 1'b1;
+		input_addr_sel		= 4'b0001;
 	end
 
 	STATE_INPUT_READ_ADDR2: begin
-		next_input_state		= STATE_INPUT_READ_ADDR3;
-		input_req_valid			= 1'b1;
-		input_sram_read_address	= input_sram_raddr + 1;
+		next_input_state	= STATE_INPUT_READ_ADDR3;
+		input_req_valid		= 1'b1;
+		input_addr_sel		= 4'b0010;
 	end
 
 	STATE_INPUT_READ_ADDR3: begin
-		next_input_state 		= STATE_INPUT_READ_ADDR4;
-		input_req_valid 		= 1'b1;
-		input_sram_read_address	= input_sram_raddr + (N >> 1);
+		next_input_state 	= STATE_INPUT_READ_ADDR4;
+		input_req_valid 	= 1'b1;
+		input_addr_sel		= 4'b0011;
 	end
 
 	STATE_INPUT_READ_ADDR4: begin
-		next_input_state 		= STATE_INPUT_READ_ADDR5;
-		input_req_valid 		= 1'b1;
-		input_sram_read_address	= input_sram_raddr + (N >> 1) + 1;
+		next_input_state 	= STATE_INPUT_READ_ADDR5;
+		input_req_valid 	= 1'b1;
+		input_addr_sel		= 4'b0100;
 	end
 
 	STATE_INPUT_READ_ADDR5: begin
-		next_input_state 		= STATE_INPUT_READ_ADDR6;
-		input_req_valid 		= 1'b1;
-		input_sram_read_address	= input_sram_raddr + N;
+		next_input_state 	= STATE_INPUT_READ_ADDR6;
+		input_req_valid 	= 1'b1;
+		input_addr_sel		= 4'b0101;
 	end
 
 	STATE_INPUT_READ_ADDR6: begin
-		next_input_state 		= STATE_INPUT_READ_ADDR7;
-		input_req_valid 		= 1'b1;
-		input_sram_read_address	= input_sram_raddr + N + 1;
+		next_input_state 	= STATE_INPUT_READ_ADDR7;
+		input_req_valid 	= 1'b1;
+		input_addr_sel		= 4'b0110;
 	end
 
 	STATE_INPUT_READ_ADDR7: begin
-		next_input_state 		= STATE_INPUT_READ_ADDR8;
-		input_req_valid 		= 1'b1;
-		input_sram_read_address	= input_sram_raddr + (N + (N >> 1)); // (3 * N) / 2
+		next_input_state 	= STATE_INPUT_READ_ADDR8;
+		input_req_valid 	= 1'b1;
+		input_addr_sel		= 4'b0111;
 	end
 
 	STATE_INPUT_READ_ADDR8: begin
-		next_input_state 		= STATE_INPUT_CHECK1;
-		input_req_valid 		= 1'b1;
-		input_sram_read_address	= input_sram_raddr + (N + (N >> 1) + 1);
-		input_set_done			= 1'b1;
+		next_input_state 	= STATE_INPUT_CHECK1;
+		input_req_valid 	= 1'b1;
+		input_addr_sel		= 4'b1000;
+		input_set_done		= 1'b1;
 	end
 
 	STATE_INPUT_CHECK1: begin
-		next_input_state 		= STATE_INPUT_CHECK2;
+		next_input_state 	= STATE_INPUT_CHECK2;
 	end
 
 	STATE_INPUT_CHECK2: begin
 		if (input_matrix_done) begin
-			next_input_state 	= STATE_INPUT_READ_SIZE;
+			next_input_state = STATE_INPUT_READ_SIZE;
 		end else if (ibuf_set_done) begin
-			next_input_state 	= STATE_INPUT_READ_ADDR1;
+			next_input_state = STATE_INPUT_READ_ADDR1;
 		end else begin
-			next_input_state	= STATE_INPUT_CHECK2;
+			next_input_state = STATE_INPUT_CHECK2;
 		end
 	end
 	endcase
 	end
+
+	wire [7:0] next_col = col + 8'h2;
+	wire [7:0] next_row = row + 8'h2;
+
+	assign input_col_done    = (next_col > (N - 8'h2));
+	assign input_matrix_done = (next_row > (N - 8'h2));
 
 	always @(posedge clk) begin
 		if (~reset_b) begin
@@ -306,11 +307,31 @@ module MyDesign (
 		end
 	end
 
+	// Datapath
+
+	assign input_set_addr 	= ((row << logN) + col) >> 1; // (N x r + c) / 2
+	assign input_sram_raddr = input_base_addr + input_set_addr + 12'h1;
+
+	always @(*) begin
+	casex (input_addr_sel)
+		4'b0000: input_sram_read_address = input_base_addr;
+		4'b0001: input_sram_read_address = input_sram_raddr;
+		4'b0010: input_sram_read_address = input_sram_raddr + 1;
+		4'b0011: input_sram_read_address = input_sram_raddr + (N >> 1);
+		4'b0100: input_sram_read_address = input_sram_raddr + (N >> 1) + 1;
+		4'b0101: input_sram_read_address = input_sram_raddr + N;
+		4'b0110: input_sram_read_address = input_sram_raddr + N + 1;
+		4'b0111: input_sram_read_address = input_sram_raddr + (N + (N >> 1)); // (3 * N) / 2
+		4'b1000: input_sram_read_address = input_sram_raddr + (N + (N >> 1) + 1);
+		default: input_sram_read_address = 4'bxxxx;
+	endcase
+	end
+
 	always @(posedge clk) begin
 		if (~reset_b) begin
 			input_base_addr  <= 12'h0;
-			row 		<= 8'h0;
-			col 		<= 8'h0;
+			row <= 8'h0;
+			col <= 8'h0;
 		end else begin
 			if (input_set_done) begin
 				col <= next_col;
@@ -323,7 +344,6 @@ module MyDesign (
 
 			if (input_matrix_done) begin
 				input_base_addr <= input_base_addr + ((N << logN) >> 1) + 1; // Go to the next input matrix
-				// input_base_addr <= input_base_addr + ((N * N) >> 1) + 1; // Go to the next input matrix
 				row <= 8'h0;
 				col <= 8'h0;
 			end
