@@ -148,7 +148,7 @@ module MyDesign (
 	reg  kernel_byteen;
 
 	// Stage 2: Datapath
-	reg  [7:0] ibuf [15:0]; // Shift register
+	reg  [7:0] ibuf [15:0]; 
 	reg  input_data_size;
 	reg  input_data_valid;
 
@@ -293,11 +293,8 @@ module MyDesign (
 	endcase
 	end
 
-	wire [7:0] next_col = col + 8'h2;
-	wire [7:0] next_row = row + 8'h2;
-
-	assign input_col_done    = (next_col > (N - 8'h2));
-	assign input_matrix_done = (next_row > (N - 8'h2));
+	assign input_col_done    = ((col + 8'h2) > (N - 8'h2));
+	assign input_matrix_done = ((row + 8'h2) > (N - 8'h2));
 
 	always @(posedge clk) begin
 		if (~reset_b) begin
@@ -334,12 +331,12 @@ module MyDesign (
 			col <= 8'h0;
 		end else begin
 			if (input_set_done) begin
-				col <= next_col;
+				col <= col + 8'h2;
 			end
 
 			if (input_col_done) begin
 				col <= 8'h0;
-				row <= next_row;
+				row <= row + 8'h2;
 			end
 
 			if (input_matrix_done) begin
