@@ -112,8 +112,17 @@ module MyDesign (
 	reg  [1:0] current_relu_state;
 	reg  [1:0] next_relu_state;
 
-	// Stage 1 datapath
+	// Stage 1: Control
+	reg  input_req_size;
+	reg  input_req_valid;
+	reg  input_req_fire;
+	reg  input_set_done;
+	wire input_col_done;
+	wire input_matrix_done;
+	reg  input_matrix_done_r;
+	reg [4:0] input_addr_sel;
 
+	// Stage 1: Datapath
 	reg  [ADDRW-1:0] input_base_addr;
 	wire [ADDRW-1:0] input_set_addr;
 	wire [ADDRW-1:0] input_sram_raddr;
@@ -125,23 +134,7 @@ module MyDesign (
 	reg  [7:0] row;
 	reg  [7:0] col;
 
-
-	// Stage 1 Control signals
-	reg  input_req_size;
-	reg  input_req_valid;
-	reg  input_req_fire;
-	reg  input_set_done;
-	wire input_col_done;
-	wire input_matrix_done;
-	reg  input_matrix_done_r;
-	reg [4:0] input_addr_sel;
-
-	// Stage 2 Control signals
-
-	reg  input_data_size;
-	reg  input_data_valid;
-
-	reg  [7:0] ibuf [15:0]; // Shift register
+	// Stage 2: Control
 	reg  ibuf_ready;
 	reg  ibuf_fire;
 	wire ibuf_push;
@@ -151,8 +144,15 @@ module MyDesign (
 	reg  ibuf_set_done;
 	reg  ibuf_matrix_done;
 
+	reg [2:0] kernel_addr_sel;
 	reg  kernel_byteen;
 
+	// Stage 2: Datapath
+	reg  [7:0] ibuf [15:0]; // Shift register
+	reg  input_data_size;
+	reg  input_data_valid;
+
+	// Stage 3: Control
 	reg  conv_valid;
 	reg  conv_matrix_done;
 
@@ -357,8 +357,6 @@ module MyDesign (
 		end
 	end
 
-	// STAGE 2 //////////////////////////////////////////////////////
-
 	// Pipeline Register
 	always @(posedge clk) begin : pipe_reg_st_1_to_2
 		if (~reset_b) begin
@@ -374,10 +372,9 @@ module MyDesign (
 		end
 	end
 
-	// Store input SRAM read data in a shift register
-	assign ibuf_push 	= input_data_valid & ~input_data_size & ibuf_ready;
-	assign N 			= input_matrix_size[7:0];
-	assign logN 		= `CLOG2(N);
+	// STAGE 2 //////////////////////////////////////////////////////
+
+	// Controller
 
 	always @(*) begin
 
@@ -387,12 +384,7 @@ module MyDesign (
 	ibuf_set_done 	= 1'b0;
 	ibuf_multiply 	= 1'b0;
 	kernel_byteen 	= 1'bx;
-	weights_sram_read_address = 12'hx;
-
-	ibuf_out[0] = ibuf[15];
-	ibuf_out[1] = ibuf[14];
-	ibuf_out[2] = ibuf[11];
-	ibuf_out[3] = ibuf[10];
+	kernel_addr_sel = 3'hx;
 
 	casex (current_ibuf_state)	
 	STATE_IBUF_EMPTY: begin
@@ -438,7 +430,7 @@ module MyDesign (
 	STATE_IBUF_FILL14: begin
 		next_ibuf_state = STATE_IBUF_MULT1;
 		ibuf_ready 		= 1'b1;
-		weights_sram_read_address = 12'h0;
+		kernel_addr_sel = 3'b000;
 	end
 
 	STATE_IBUF_MULT1: begin
@@ -446,7 +438,7 @@ module MyDesign (
 		ibuf_multiply 	= 1'b1;
 		ibuf_pop		= 1'b1;
 		kernel_byteen 	= 1'b1;
-		weights_sram_read_address = 12'h0;
+		kernel_addr_sel = 3'b000;
 	end
 
 	STATE_IBUF_MULT2: begin
@@ -454,14 +446,14 @@ module MyDesign (
 		ibuf_multiply 	= 1'b1;
 		ibuf_pop		= 1'b1;
 		kernel_byteen 	= 1'b0;
-		weights_sram_read_address = 12'h1;
+		kernel_addr_sel = 3'b001;
 	end
 
 	STATE_IBUF_MULT3: begin
 		next_ibuf_state	= STATE_IBUF_MULT4;
 		ibuf_multiply 	= 1'b1;
 		kernel_byteen 	= 1'b1;
-		weights_sram_read_address = 12'h1;
+		kernel_addr_sel = 3'b001;
 	end
 
 	STATE_IBUF_MULT4: begin
@@ -469,7 +461,7 @@ module MyDesign (
 		ibuf_multiply 	= 1'b1;
 		ibuf_pop		= 1'b1;
 		kernel_byteen 	= 1'b0;
-		weights_sram_read_address = 12'h2;
+		kernel_addr_sel = 3'b010;
 	end
 
 	STATE_IBUF_MULT5: begin
@@ -477,14 +469,14 @@ module MyDesign (
 		ibuf_multiply 	= 1'b1;
 		ibuf_pop		= 1'b1;
 		kernel_byteen 	= 1'b1;
-		weights_sram_read_address = 12'h2;
+		kernel_addr_sel = 3'b010;
 	end
 
 	STATE_IBUF_MULT6: begin
 		next_ibuf_state	= STATE_IBUF_MULT7;
 		ibuf_multiply 	= 1'b1;
 		kernel_byteen 	= 1'b0;
-		weights_sram_read_address = 12'h3;
+		kernel_addr_sel = 3'b011;
 	end
 
 	STATE_IBUF_MULT7: begin
@@ -492,7 +484,7 @@ module MyDesign (
 		ibuf_multiply 	= 1'b1;
 		ibuf_pop		= 1'b1;
 		kernel_byteen 	= 1'b1;
-		weights_sram_read_address = 12'h3;
+		kernel_addr_sel = 3'b011;
 	end
 
 	STATE_IBUF_MULT8: begin
@@ -500,7 +492,7 @@ module MyDesign (
 		ibuf_multiply 	= 1'b1;
 		ibuf_pop		= 1'b1;
 		kernel_byteen 	= 1'b0;
-		weights_sram_read_address = 12'h4;
+		kernel_addr_sel = 3'b100;
 	end
 
 	STATE_IBUF_MULT9: begin
@@ -545,6 +537,28 @@ module MyDesign (
 		end
 	end
 
+	// Datapath
+
+	// Store input SRAM read data in a shift register
+	assign ibuf_push 	= input_data_valid & ~input_data_size & ibuf_ready;
+	assign N 			= input_matrix_size[7:0];
+	assign logN 		= `CLOG2(N);
+
+	always @(*) begin
+		ibuf_out[0] = ibuf[15];
+		ibuf_out[1] = ibuf[14];
+		ibuf_out[2] = ibuf[11];
+		ibuf_out[3] = ibuf[10];
+
+		casex (kernel_addr_sel) 
+			3'b000: weights_sram_read_address = 12'h0;
+			3'b001: weights_sram_read_address = 12'h1;
+			3'b010: weights_sram_read_address = 12'h2;
+			3'b011: weights_sram_read_address = 12'h3;
+			3'b100: weights_sram_read_address = 12'h4;
+		endcase
+	end
+
 	always @(posedge clk) begin
 		if (~reset_b) begin
 			input_matrix_size <= 16'h0;
@@ -573,8 +587,6 @@ module MyDesign (
 		end
 	end
 
-	// STAGE 3: Convolution //////////////////////////////////////////////////////
-
 	// Pipeline Register
 	always @(posedge clk) begin : pipe_reg_st_2_to_3
 		if (~reset_b) begin
@@ -585,6 +597,10 @@ module MyDesign (
 			conv_matrix_done 	<= ibuf_matrix_done;
 		end
 	end
+
+	// STAGE 3: Convolution //////////////////////////////////////////////////////
+
+	// Datapath
 
 	assign kernel_rdata = kernel_byteen ? weights_sram_read_data[8 +: 8] : weights_sram_read_data[0 +: 8];
 
@@ -608,8 +624,6 @@ module MyDesign (
 		end
 	endgenerate
 
-	// STAGE 4: Max Pool  //////////////////////////////////////////////////////
-
 	// Pipeline Register
 	always @(posedge clk) begin : pipe_reg_st_3_to_4
 		if (~reset_b) begin
@@ -621,11 +635,11 @@ module MyDesign (
 		end
 	end
 
+	// STAGE 4: Max Pool  //////////////////////////////////////////////////////
+
 	assign max_pool1 = (macc[0] > macc[1]) ? macc[0] : macc[1];
 	assign max_pool2 = (macc[2] > macc[3]) ? macc[2] : macc[3];
 	assign max_pool = (max_pool1 > max_pool2) ? max_pool1 : max_pool2;
-
-	// STAGE 5: ReLu //////////////////////////////////////////////////////////
 
 	// Pipeline Register
 	always @(posedge clk) begin : pipe_reg_st_4_to_5
@@ -640,8 +654,9 @@ module MyDesign (
 		end
 	end
 
-	assign relu = max_pool_r[19] ? 8'h0 : (max_pool_r > 8'h7f) ? 8'h7f : {1'b0, max_pool_r[0 +: 7]};
-	assign relu_fire = relu_valid & relu_ready;
+	// STAGE 5: ReLu //////////////////////////////////////////////////////////
+
+	// Controller
 
 	always @(*) begin
 	casex (current_relu_state)
@@ -667,10 +682,22 @@ module MyDesign (
 	endcase
 	end
 
-	// Write to output SRAM
 	always @(posedge clk) begin
 		if (~reset_b) begin
 			current_relu_state 			<= STATE_RELU_STORE;
+		end else begin
+			current_relu_state 			<= next_relu_state;
+		end
+	end
+
+	// Datapath
+
+	assign relu = max_pool_r[19] ? 8'h0 : (max_pool_r > 8'h7f) ? 8'h7f : {1'b0, max_pool_r[0 +: 7]};
+	assign relu_fire = relu_valid & relu_ready;
+
+	// Write to output SRAM
+	always @(posedge clk) begin
+		if (~reset_b) begin
 			output_sram_write_enable 	<= 1'b0;
 			output_sram_write_addresss 	<= 12'hfff;
 			output_sram_write_data 		<= 16'h0;
@@ -680,7 +707,6 @@ module MyDesign (
 				output_sram_write_addresss <= 12'hfff;
 			end
 
-			current_relu_state 			<= next_relu_state;
 			output_matrix_done 			<= relu_matrix_done;
 			output_done 				<= output_matrix_done;
 			output_sram_write_enable    <= relu_fire | relu_matrix_done;
@@ -702,10 +728,6 @@ module MyDesign (
 			end
 		end
 	end
-
-	// STAGE 6 //////////////////////////////////////////////////////////
-
-
 
 	// DEBUGGING //////////////////////////////////////////////////////
 
