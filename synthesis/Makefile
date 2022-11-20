@@ -1,4 +1,4 @@
-export RTL_FILES=$(wildcard ../rtl/*.v) 
+export RTL_FILES=$(wildcard ../rtl/*.*v) 
 export CLOCK_PER := 10
 
 

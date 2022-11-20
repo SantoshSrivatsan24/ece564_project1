@@ -186,7 +186,6 @@ module MyDesign (
 	assign input_matrix_done = (next_row > (N - 2));
 
 	assign input_set_addr 	= ((row << logN) + col) >> 1; // (N x r + c) / 2
-	// assign input_set_addr 	= ((row * N) + col) >> 1; // (N x r + c) / 2
 	assign input_sram_raddr = input_base_addr + input_set_addr + 12'h1;
 
 	always @(*) begin
