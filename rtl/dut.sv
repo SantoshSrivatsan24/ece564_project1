@@ -53,41 +53,40 @@ module MyDesign (
 	localparam ADDRW = 12;
 	localparam DATAW = 16;
 
-	// TODO: Can onehot encoding reduce decode logic?
-	localparam [3:0]
-		STATE_INPUT_IDLE  			= 4'h0,
-		STATE_INPUT_READ_SIZE  		= 4'h1,
-		STATE_INPUT_CHECK_SIZE 		= 4'h2,
-		STATE_INPUT_READ_ADDR1 		= 4'h3,
-		STATE_INPUT_READ_ADDR2 		= 4'h4,
-		STATE_INPUT_READ_ADDR3 		= 4'h5,
-		STATE_INPUT_READ_ADDR4 		= 4'h6,
-		STATE_INPUT_READ_ADDR5 		= 4'h7,
-		STATE_INPUT_READ_ADDR6 		= 4'h8,
-		STATE_INPUT_READ_ADDR7 		= 4'h9,
-		STATE_INPUT_READ_ADDR8 		= 4'ha,
-		STATE_INPUT_CHECK1  		= 4'hb,
-		STATE_INPUT_CHECK2 			= 4'hc,
-		STATE_INPUT_DONE 			= 4'hd;
+	localparam [13:0]
+		STATE_INPUT_IDLE  			= 14'b00_0000_0000_0001,
+		STATE_INPUT_READ_SIZE  		= 14'b00_0000_0000_0010,
+		STATE_INPUT_CHECK_SIZE 		= 14'b00_0000_0000_0100,
+		STATE_INPUT_READ_ADDR1 		= 14'b00_0000_0000_1000,
+		STATE_INPUT_READ_ADDR2 		= 14'b00_0000_0001_0000,
+		STATE_INPUT_READ_ADDR3 		= 14'b00_0000_0010_0000,
+		STATE_INPUT_READ_ADDR4 		= 14'b00_0000_0100_0000,
+		STATE_INPUT_READ_ADDR5 		= 14'b00_0000_1000_0000,
+		STATE_INPUT_READ_ADDR6 		= 14'b00_0001_0000_0000,
+		STATE_INPUT_READ_ADDR7 		= 14'b00_0010_0000_0000,
+		STATE_INPUT_READ_ADDR8 		= 14'b00_0100_0000_0000,
+		STATE_INPUT_CHECK1  		= 14'b00_1000_0000_0000,
+		STATE_INPUT_CHECK2 			= 14'b01_0000_0000_0000,
+		STATE_INPUT_DONE 			= 14'b10_0000_0000_0000;
 
-	localparam [4:0]
-		STATE_IBUF_EMPTY			= 5'h0,
-		STATE_IBUF_FILL2			= 5'h1,
-		STATE_IBUF_FILL4 			= 5'h2,
-		STATE_IBUF_FILL6			= 5'h3,
-		STATE_IBUF_FILL8			= 5'h4,
-		STATE_IBUF_FILL10			= 5'h5,
-		STATE_IBUF_FILL12			= 5'h6,
-		STATE_IBUF_FILL14			= 5'h7,
-		STATE_IBUF_MULT1			= 5'h8,
-		STATE_IBUF_MULT2			= 5'ha,
-		STATE_IBUF_MULT3			= 5'hb,
-		STATE_IBUF_MULT4			= 5'hc,
-		STATE_IBUF_MULT5			= 5'hd,
-		STATE_IBUF_MULT6			= 5'he,
-		STATE_IBUF_MULT7			= 5'hf,
-		STATE_IBUF_MULT8			= 5'h10,
-		STATE_IBUF_MULT9			= 5'h11;
+	localparam [16:0]
+		STATE_IBUF_EMPTY			= 17'b0_0000_0000_0000_0001,
+		STATE_IBUF_FILL2			= 17'b0_0000_0000_0000_0010,
+		STATE_IBUF_FILL4 			= 17'b0_0000_0000_0000_0100,
+		STATE_IBUF_FILL6			= 17'b0_0000_0000_0000_1000,
+		STATE_IBUF_FILL8			= 17'b0_0000_0000_0001_0000,
+		STATE_IBUF_FILL10			= 17'b0_0000_0000_0010_0000,
+		STATE_IBUF_FILL12			= 17'b0_0000_0000_0100_0000,
+		STATE_IBUF_FILL14			= 17'b0_0000_0000_1000_0000,
+		STATE_IBUF_MULT1			= 17'b0_0000_0001_0000_0000,
+		STATE_IBUF_MULT2			= 17'b0_0000_0010_0000_0000,
+		STATE_IBUF_MULT3			= 17'b0_0000_0100_0000_0000,
+		STATE_IBUF_MULT4			= 17'b0_0000_1000_0000_0000,
+		STATE_IBUF_MULT5			= 17'b0_0001_0000_0000_0000,
+		STATE_IBUF_MULT6			= 17'b0_0010_0000_0000_0000,
+		STATE_IBUF_MULT7			= 17'b0_0100_0000_0000_0000,
+		STATE_IBUF_MULT8			= 17'b0_1000_0000_0000_0000,
+		STATE_IBUF_MULT9			= 17'b1_0000_0000_0000_0000;
 
 	localparam [2:0]
 		STATE_MATRIX_INCOMPLETE0	= 2'h0,
@@ -100,11 +99,11 @@ module MyDesign (
 
 	////////////////////////////////////////////////////////
 
-	reg  [3:0] current_input_state;
-	reg  [3:0] next_input_state;
+	reg  [13:0] current_input_state;
+	reg  [13:0] next_input_state;
 
-	reg  [4:0] current_ibuf_state;
-	reg  [4:0] next_ibuf_state;
+	reg  [16:0] current_ibuf_state;
+	reg  [16:0] next_ibuf_state;
 
 	reg  [2:0] current_matrix_state;
 	reg  [2:0] next_matrix_state;
@@ -511,12 +510,16 @@ module MyDesign (
 	STATE_MATRIX_INCOMPLETE0: begin
 		if (input_matrix_done_r) begin
 			next_matrix_state 	= STATE_MATRIX_INCOMPLETE1;
+		end else begin
+			next_matrix_state	= STATE_MATRIX_INCOMPLETE0;
 		end
 	end
 
 	STATE_MATRIX_INCOMPLETE1: begin
 		if (ibuf_set_done) begin
 			next_matrix_state 	= STATE_MATRIX_COMPLETE;
+		end else begin
+			next_matrix_state	= STATE_MATRIX_INCOMPLETE1;
 		end
 	end
 
@@ -524,7 +527,7 @@ module MyDesign (
 		next_matrix_state 		= STATE_MATRIX_INCOMPLETE0;
 		ibuf_matrix_done 		= 1'b1;
 	end
-	
+
 	default: next_matrix_state = STATE_MATRIX_INCOMPLETE0;
 	endcase
 	end
