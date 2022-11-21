@@ -1,5 +1,5 @@
 export RTL_FILES=$(wildcard ../rtl/*.*v) 
-export CLOCK_PER := 10
+export CLOCK_PER := 9
 
 
 all: logs reports gl sdf 

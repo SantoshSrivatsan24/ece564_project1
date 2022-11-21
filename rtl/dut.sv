@@ -290,6 +290,8 @@ module MyDesign (
 			next_input_state = STATE_INPUT_CHECK2;
 		end
 	end
+
+	default: next_input_state = STATE_INPUT_IDLE;
 	endcase
 	end
 
@@ -374,7 +376,6 @@ module MyDesign (
 	// Controller
 
 	always @(*) begin
-
 	ibuf_ready 		= 1'b0;
 	ibuf_pop 		= 1'b0;
 	ibuf_empty 		= 1'b0;
@@ -498,6 +499,8 @@ module MyDesign (
 		ibuf_set_done	= 1'b1;
 		kernel_byteen 	= 1'b1;
 	end
+
+	default: next_ibuf_state = STATE_IBUF_EMPTY;
 	endcase
 	end
 
@@ -521,6 +524,8 @@ module MyDesign (
 		next_matrix_state 		= STATE_MATRIX_INCOMPLETE0;
 		ibuf_matrix_done 		= 1'b1;
 	end
+	
+	default: next_matrix_state = STATE_MATRIX_INCOMPLETE0;
 	endcase
 	end
 
@@ -542,10 +547,10 @@ module MyDesign (
 	assign logN 		= `CLOG2(N);
 
 	always @(*) begin
-		ibuf_out[0] = ibuf[15];
-		ibuf_out[1] = ibuf[14];
-		ibuf_out[2] = ibuf[11];
-		ibuf_out[3] = ibuf[10];
+		ibuf_out[0] = $signed(ibuf[15]);
+		ibuf_out[1] = $signed(ibuf[14]);
+		ibuf_out[2] = $signed(ibuf[11]);
+		ibuf_out[3] = $signed(ibuf[10]);
 
 		casex (kernel_addr_sel) 
 			3'b000: weights_sram_read_address = 12'h0;
@@ -553,6 +558,7 @@ module MyDesign (
 			3'b010: weights_sram_read_address = 12'h2;
 			3'b011: weights_sram_read_address = 12'h3;
 			3'b100: weights_sram_read_address = 12'h4;
+			default: weights_sram_read_address = 12'hx;
 		endcase
 	end
 
@@ -568,11 +574,11 @@ module MyDesign (
 			end
 
 			if (ibuf_pop) begin
-				for (i = 16; i > 0; i = i - 1) begin
+				for (i = 15; i > 0; i = i - 1) begin
 					ibuf[i] <= ibuf[i - 1]; // Shift one value
 				end
 			end else begin
-				for (i = 16; i > 0; i = i - 1) begin
+				for (i = 15; i > 0; i = i - 1) begin
 					ibuf[i] <= ibuf[i - 2]; // Shift two values
 				end
 			end
@@ -656,6 +662,9 @@ module MyDesign (
 	// Controller
 
 	always @(*) begin
+	relu_store		= 1'b0;
+	relu_ready		= 1'b0;
+
 	casex (current_relu_state)
 	STATE_RELU_STORE: begin
 		if (relu_valid) begin
@@ -664,7 +673,6 @@ module MyDesign (
 			next_relu_state = STATE_RELU_STORE;
 		end
 		relu_store = 1'b1;
-		relu_ready = 1'b0;
 	end
 
 	STATE_RELU_READY: begin
@@ -673,9 +681,10 @@ module MyDesign (
 		end else begin
 			next_relu_state = STATE_RELU_READY;
 		end
-		relu_store = 1'b0;
 		relu_ready = 1'b1;
 	end
+
+	default: next_relu_state = STATE_RELU_STORE;
 	endcase
 	end
 
@@ -761,7 +770,7 @@ module MyDesign (
 		// end
 
 		if (output_sram_write_enable) begin
-			$display ("@%0h \t %h", output_sram_write_addresss, output_sram_write_data);
+			$display ("@%0h  %h", output_sram_write_addresss, output_sram_write_data);
 		end
 
 		if (output_matrix_done) begin
