@@ -1,0 +1,204 @@
+#------------------------------------------------------------
+#
+# Basic Synthesis Script (TCL format)
+#                                  
+# Revision History                
+#   1/15/03  : Author Shane T. Gehring - from class example
+#   2/09/07  : Author Zhengtao Yu      - from class example
+#   12/14/07 : Author Ravi Jenkal      - updated to 180 nm & tcl
+#
+#------------------------------------------------------------
+#---------------------------------------------------------
+# Read in Verilog file and map (synthesize) onto a generic
+# library.
+# MAKE SURE THAT YOU CORRECT ALL WARNINGS THAT APPEAR
+# during the execution of the read command are fixed 
+# or understood to have no impact.
+# ALSO CHECK your latch/flip-flop list for unintended 
+# latches                                            
+#---------------------------------------------------------
+read_verilog $::env(RTL_FILES)
+Loading db file '/afs/eos.ncsu.edu/lockers/research/ece/wdavis/tech/nangate/NangateOpenCellLibrary_PDKv1_2_v2008_10/liberty/520/NangateOpenCellLibrary_PDKv1_2_v2008_10_slow_nldm.db'
+Loading db file '/mnt/apps/public/COE/synopsys_apps/syn/S-2021.06-SP3/libraries/syn/dw_foundation.sldb'
+Loading db file '/mnt/apps/public/COE/synopsys_apps/syn/S-2021.06-SP3/libraries/syn/gtech.db'
+Loading db file '/mnt/apps/public/COE/synopsys_apps/syn/S-2021.06-SP3/libraries/syn/standard.sldb'
+  Loading link library 'NangateOpenCellLibrary_PDKv1_2_v2008_10_slow_nldm'
+  Loading link library 'gtech'
+Loading verilog files: '/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv' '/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.v' 
+Detecting input file type automatically (-rtl or -netlist).
+Reading with Presto HDL Compiler (equivalent to -rtl option).
+Running PRESTO HDLC
+Compiling source file /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv
+Compiling source file /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.v
+Warning:  /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv:776: Invalid escape sequence '\0' in call to '$display'. (VER-941)
+Warning:  /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.v:1: Overwriting existing design element 'MyDesign' with newer version. (VER-64)
+Warning:  /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv:776: Invalid escape sequence '\0' in call to '$display'. (VER-941)
+Warning:  /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv:550: signed to unsigned conversion occurs. (VER-318)
+Warning:  /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv:611: unsigned to signed assignment occurs. (VER-318)
+Warning:  /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv:616: signed to unsigned assignment occurs. (VER-318)
+Warning:  /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv:626: signed to unsigned conversion occurs. (VER-318)
+Warning:  /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv:657: signed to unsigned assignment occurs. (VER-318)
+Warning: Could not open default SVF file /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/synthesis/svf/default.svf for writing.
+
+Statistics for case statements in always block at line 186 in file
+	'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           194            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 313 in file
+	'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           314            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 377 in file
+	'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           386            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 506 in file
+	'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           509            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 552 in file
+	'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           558            |    auto/auto     |
+===============================================
+Warning:  /afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv:585: Out of bounds bit select ibuf[-1], valid bounds are [15:0]. (ELAB-312)
+
+Statistics for case statements in always block at line 667 in file
+	'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           671            |    auto/auto     |
+===============================================
+$display output: @???  ????
+$display output: 
+output matrix done!
+
+
+Inferred memory devices in process
+	in routine MyDesign line 300 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+===================================================================================
+|      Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===================================================================================
+| current_input_state_reg | Flip-flop |  14   |  Y  | N  | N  | N  | N  | N  | N  |
+===================================================================================
+
+Inferred memory devices in process
+	in routine MyDesign line 328 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       col_reg       | Flip-flop |   8   |  Y  | N  | N  | N  | N  | N  | N  |
+|       row_reg       | Flip-flop |   8   |  Y  | N  | N  | N  | N  | N  | N  |
+| input_base_addr_reg | Flip-flop |  12   |  Y  | N  | N  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine MyDesign line 359 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+===================================================================================
+|      Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===================================================================================
+| input_matrix_done_r_reg | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+|      ibuf_fire_reg      | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+|  input_data_valid_reg   | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+|   input_data_size_reg   | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+===================================================================================
+
+Inferred memory devices in process
+	in routine MyDesign line 535 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+====================================================================================
+|      Register Name       |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+====================================================================================
+|  current_ibuf_state_reg  | Flip-flop |  17   |  Y  | N  | N  | N  | N  | N  | N  |
+| current_matrix_state_reg | Flip-flop |   3   |  Y  | N  | N  | N  | N  | N  | N  |
+====================================================================================
+
+Inferred memory devices in process
+	in routine MyDesign line 568 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+=================================================================================
+|     Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+=================================================================================
+| input_matrix_size_reg | Flip-flop |   8   |  Y  | N  | N  | N  | N  | N  | N  |
+|       ibuf_reg        | Flip-flop |  128  |  Y  | N  | N  | N  | N  | N  | N  |
+=================================================================================
+
+Inferred memory devices in process
+	in routine MyDesign line 597 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+================================================================================
+|    Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+================================================================================
+|    conv_valid_reg    | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+| conv_matrix_done_reg | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+================================================================================
+
+Inferred memory devices in process
+	in routine MyDesign line 618 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      macc_reg       | Flip-flop |  80   |  Y  | N  | N  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine MyDesign line 651 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+================================================================================
+|    Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+================================================================================
+|    relu_valid_reg    | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+| relu_matrix_done_reg | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+|    max_pool_r_reg    | Flip-flop |  20   |  Y  | N  | N  | N  | N  | N  | N  |
+================================================================================
+
+Inferred memory devices in process
+	in routine MyDesign line 694 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+==================================================================================
+|     Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+==================================================================================
+| current_relu_state_reg | Flip-flop |   2   |  Y  | N  | N  | N  | N  | N  | N  |
+==================================================================================
+
+Inferred memory devices in process
+	in routine MyDesign line 708 in file
+		'/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/dut.sv'.
+==========================================================================================
+|         Register Name          |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+==========================================================================================
+|          relu_old_reg          | Flip-flop |   8   |  Y  | N  | N  | N  | N  | N  | N  |
+| output_sram_write_addresss_reg | Flip-flop |  12   |  Y  | N  | N  | N  | N  | N  | N  |
+|   output_sram_write_data_reg   | Flip-flop |  16   |  Y  | N  | N  | N  | N  | N  | N  |
+|  output_sram_write_enable_reg  | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+|        output_done_reg         | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+|     output_matrix_done_reg     | Flip-flop |   1   |  N  | N  | N  | N  | N  | N  | N  |
+==========================================================================================
+Presto compilation completed successfully.
+Current design is now '/afs/unity.ncsu.edu/users/s/srsrivat/ece564/project1/rtl/MyDesign.db:MyDesign'
+Loaded 1 design.
+Current design is 'MyDesign'.
+MyDesign
