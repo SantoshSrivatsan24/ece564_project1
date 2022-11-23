@@ -93,7 +93,7 @@ module MyDesign (
 		STATE_MATRIX_INCOMPLETE1	= 3'b010,
 		STATE_MATRIX_COMPLETE  		= 3'b100;
 
-	localparam [2:0]
+	localparam
 		STATE_RELU_STORE			= 1'b0,
 		STATE_RELU_READY			= 1'b1;
 
@@ -108,8 +108,8 @@ module MyDesign (
 	reg  [2:0] current_matrix_state;
 	reg  [2:0] next_matrix_state;
 
-	reg  [1:0] current_relu_state;
-	reg  [1:0] next_relu_state;
+	reg  current_relu_state;
+	reg  next_relu_state;
 
 	// Stage 1: Control
 	reg  input_req_size;
@@ -740,7 +740,7 @@ module MyDesign (
 
 	// DEBUGGING //////////////////////////////////////////////////////
 
-	always @(posedge clk) begin
+	// always @(posedge clk) begin
 
 		// if (input_data_valid) begin
 		// 	$display ("%d: SRAM raddr = %h, SRAM rdata = %h", $time, input_sram_read_address, input_sram_read_data);
@@ -772,14 +772,14 @@ module MyDesign (
 		// 	$display ("relu = %d", relu);
 		// end
 
-		if (output_sram_write_enable) begin
-			$display ("@%0h  %h", output_sram_write_addresss, output_sram_write_data);
-		end
+		// if (output_sram_write_enable) begin
+		// 	$display ("@%0h  %h", output_sram_write_addresss, output_sram_write_data);
+		// end
 
-		if (output_matrix_done) begin
-			$display ("\noutput matrix done!\n");
-		end
-	end
+		// if (output_matrix_done) begin
+		// 	$display ("\noutput matrix done!\n");
+		// end
+	// end
 
 
 endmodule
