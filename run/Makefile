@@ -1,4 +1,4 @@
-VERILOG_SRC=$(wildcard ../rtl/*.sv) ../testbench/testbench.sv
+VERILOG_SRC=$(wildcard ../rtl/*.v) ../testbench/testbench.sv
 GOLDEN_SRC=$(wildcard ../golden_model/*.*v) ../testbench/testbench.sv
 
 vlog-v:
